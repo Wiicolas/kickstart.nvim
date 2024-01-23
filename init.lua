@@ -98,6 +98,7 @@ require('lazy').setup({
   {
     -- Autocompletion
     'hrsh7th/nvim-cmp',
+    event = { 'InsertEnter', 'CmdlineEnter' },
     dependencies = {
       -- Snippet Engine & its associated nvim-cmp source
       {
@@ -117,6 +118,11 @@ require('lazy').setup({
       -- Adds LSP completion capabilities
       'hrsh7th/cmp-nvim-lsp',
       'hrsh7th/cmp-path',
+      'hrsh7th/cmp-buffer',
+
+      -- Custom
+      'hrsh7th/cmp-nvim-lua',
+      'hrsh7th/cmp-cmdline',
 
       -- Adds a number of user-friendly snippets
       'rafamadriz/friendly-snippets',
@@ -131,12 +137,14 @@ require('lazy').setup({
     opts = {
       -- See `:help gitsigns.txt`
       signs = {
-        add = { text = '+' },
-        change = { text = '~' },
+        add = { text = '▍' },
+        change = { text = '▍' },
         delete = { text = '_' },
         topdelete = { text = '‾' },
         changedelete = { text = '~' },
+        untracked = { text = '▍' },
       },
+      current_line_blame = true, -- Toggle with `:Gitsigns toggle_current_line_blame`
       on_attach = function(bufnr)
         local gs = package.loaded.gitsigns
 
@@ -201,20 +209,6 @@ require('lazy').setup({
   },
 
   {
-    -- Theme inspired by Atom
-    'navarasu/onedark.nvim',
-    priority = 1000,
-    lazy = false,
-    config = function()
-      require('onedark').setup {
-        -- Set a style preset. 'dark' is default.
-        style = 'dark', -- dark, darker, cool, deep, warm, warmer, light
-      }
-      require('onedark').load()
-    end,
-  },
-
-  {
     -- Set lualine as statusline
     'nvim-lualine/lualine.nvim',
     -- See `:help lualine.txt`
@@ -223,7 +217,44 @@ require('lazy').setup({
         icons_enabled = false,
         theme = 'auto',
         component_separators = '|',
-        section_separators = '',
+        section_separators = { left = require('custom.icon').BubbleRight, right = require('custom.icon').BubbleLeft },
+      },
+      sections = {
+        lualine_a = { { 'mode', separator = { left = require('custom.icon').BubbleLeft }, right_padding = 2 } },
+        lualine_b = {
+          'branch',
+          {
+            'diff',
+            source = function()
+              local gitsigns = vim.b.gitsigns_status_dict
+              if gitsigns then
+                return {
+                  added = gitsigns.added,
+                  modified = gitsigns.changed,
+                  removed = gitsigns.removed,
+                }
+              end
+            end,
+            symbols = {
+              added = require('custom.icon').GitAdd .. ' ',
+              modified = require('custom.icon').GitChange .. ' ',
+              removed = require('custom.icon').GitDelete .. ' ',
+            },
+          },
+          {
+            'diagnostics',
+            symbols = {
+              error = require('custom.icon').DiagnosticError .. ' ',
+              warn = require('custom.icon').DiagnosticWarn .. ' ',
+              info = require('custom.icon').DiagnosticInfo .. ' ',
+              hint = require('custom.icon').DiagnosticHint .. ' ',
+            },
+          },
+        },
+        lualine_c = { 'filename' },
+        lualine_x = { 'encoding', 'fileformat', { 'filetype', icon_only = true } },
+        lualine_y = { 'progress' },
+        lualine_z = { { 'location', separator = { right = require('custom.icon').BubbleRight }, left_padding = 2 } },
       },
     },
   },
@@ -237,8 +268,24 @@ require('lazy').setup({
     opts = {},
   },
 
+  {
+    'JoosepAlviste/nvim-ts-context-commentstring',
+    opts = {
+      enable_autocmd = false,
+    },
+  },
+
   -- "gc" to comment visual regions/lines
-  { 'numToStr/Comment.nvim', opts = {} },
+  {
+    'numToStr/Comment.nvim',
+    opts = {},
+    config = function()
+      require('Comment').setup {
+        ignore = '^$',
+        pre_hook = require('ts_context_commentstring.integrations.comment_nvim').create_pre_hook(),
+      }
+    end,
+  },
 
   -- Fuzzy Finder (files, lsp, etc)
   {
@@ -282,7 +329,7 @@ require('lazy').setup({
   --    Uncomment the following line and add your plugins to `lua/custom/plugins/*.lua` to get going.
   --
   --    For additional information see: https://github.com/folke/lazy.nvim#-structuring-your-plugins
-  -- { import = 'custom.plugins' },
+  { import = 'custom.plugins' },
 }, {})
 
 -- [[ Setting options ]]
@@ -294,6 +341,7 @@ vim.o.hlsearch = false
 
 -- Make line numbers default
 vim.wo.number = true
+vim.wo.relativenumber = true
 
 -- Enable mouse mode
 vim.o.mouse = 'a'
@@ -339,8 +387,9 @@ vim.keymap.set('n', 'j', "v:count == 0 ? 'gj' : 'j'", { expr = true, silent = tr
 -- Diagnostic keymaps
 vim.keymap.set('n', '[d', vim.diagnostic.goto_prev, { desc = 'Go to previous diagnostic message' })
 vim.keymap.set('n', ']d', vim.diagnostic.goto_next, { desc = 'Go to next diagnostic message' })
-vim.keymap.set('n', '<leader>e', vim.diagnostic.open_float, { desc = 'Open floating diagnostic message' })
-vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostics list' })
+
+vim.keymap.set('n', '<leader>d', vim.diagnostic.open_float, { desc = 'Open floating diagnostic message' })
+-- vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostics list' })
 
 -- [[ Highlight on yank ]]
 -- See `:help vim.highlight.on_yank()`
@@ -352,6 +401,32 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   group = highlight_group,
   pattern = '*',
 })
+
+vim.diagnostic.config {
+  virtual_text = {
+    prefix = require('custom.icon').Circle,
+  },
+  -- signs = true,
+  signs = {
+    text = {
+      [vim.diagnostic.severity.ERROR] = require('custom.icon').Circle,
+      [vim.diagnostic.severity.HINT] = require('custom.icon').Circle,
+      [vim.diagnostic.severity.WARN] = require('custom.icon').Circle,
+      [vim.diagnostic.severity.INFO] = require('custom.icon').Circle,
+    },
+  },
+  update_in_insert = true,
+  underline = true,
+  severity_sort = true,
+  float = {
+    focusable = false,
+    style = 'minimal',
+    border = 'rounded',
+    source = 'always',
+    -- header = '',
+    -- prefix = '',
+  },
+}
 
 -- [[ Configure Telescope ]]
 -- See `:help telescope` and `:help telescope.setup()`
@@ -432,6 +507,9 @@ vim.keymap.set('n', '<leader>sg', require('telescope.builtin').live_grep, { desc
 vim.keymap.set('n', '<leader>sG', ':LiveGrepGitRoot<cr>', { desc = '[S]earch by [G]rep on Git Root' })
 vim.keymap.set('n', '<leader>sd', require('telescope.builtin').diagnostics, { desc = '[S]earch [D]iagnostics' })
 vim.keymap.set('n', '<leader>sr', require('telescope.builtin').resume, { desc = '[S]earch [R]esume' })
+vim.keymap.set('n', '<C-p>', function()
+  require('telescope.builtin').find_files(require('telescope.themes').get_dropdown { previewer = false })
+end, {})
 
 -- [[ Configure Treesitter ]]
 -- See `:help nvim-treesitter`
@@ -439,10 +517,37 @@ vim.keymap.set('n', '<leader>sr', require('telescope.builtin').resume, { desc = 
 vim.defer_fn(function()
   require('nvim-treesitter.configs').setup {
     -- Add languages to be installed here that you want installed for treesitter
-    ensure_installed = { 'c', 'cpp', 'go', 'lua', 'python', 'rust', 'tsx', 'javascript', 'typescript', 'vimdoc', 'vim', 'bash' },
+    ensure_installed = {
+      'bash',
+      'c',
+      'cpp',
+      'css',
+      'dockerfile',
+      'gitignore',
+      'go',
+      'graphql',
+      'html',
+      'javascript',
+      'json',
+      'lua',
+      'markdown',
+      'markdown_inline',
+      'php',
+      'python',
+      'regex',
+      'rust',
+      'scss',
+      'sql',
+      'tsx',
+      'typescript',
+      'twig',
+      'vim',
+      'vimdoc',
+      'yaml',
+    },
 
     -- Autoinstall languages that are not installed. Defaults to false (but you can change for yourself!)
-    auto_install = false,
+    auto_install = true,
     -- Install languages synchronously (only applied to `ensure_installed`)
     sync_install = false,
     -- List of parsers to ignore installing
@@ -457,7 +562,7 @@ vim.defer_fn(function()
         init_selection = '<c-space>',
         node_incremental = '<c-space>',
         scope_incremental = '<c-s>',
-        node_decremental = '<M-space>',
+        node_decremental = '<bs>',
       },
     },
     textobjects = {
@@ -587,20 +692,89 @@ require('mason-lspconfig').setup()
 --  define the property 'filetypes' to the map in question.
 local servers = {
   -- clangd = {},
-  -- gopls = {},
   -- pyright = {},
-  -- rust_analyzer = {},
-  -- tsserver = {},
-  -- html = { filetypes = { 'html', 'twig', 'hbs'} },
-
+  cssls = {},
+  docker_compose_language_service = {},
+  dockerls = {},
+  -- emmet_ls = {},
+  emmet_language_server = {
+    filetypes = { 'css', 'eruby', 'html', 'htmldjango', 'javascriptreact', 'less', 'pug', 'sass', 'scss', 'twig', 'typescriptreact' },
+  },
+  eslint = {
+    settings = {
+      -- helps eslint find the eslintrc when it's placed in a subfolder instead of the cwd root
+      workingDirectory = { mode = 'auto' },
+    },
+  },
+  gopls = {},
+  graphql = {},
+  html = { filetypes = { 'html', 'twig', 'hbs' } },
+  jdtls = {},
+  jsonls = {},
   lua_ls = {
     Lua = {
+      hint = { enable = true },
       workspace = { checkThirdParty = false },
       telemetry = { enable = false },
       -- NOTE: toggle below to ignore Lua_LS's noisy `missing-fields` warnings
       -- diagnostics = { disable = { 'missing-fields' } },
+      diagnostics = {
+        globals = { 'vim' },
+      },
     },
   },
+  phpactor = {
+    -- init_options = {
+    --   ['language_server_worse_reflection.inlay_hints.enable'] = true,
+    --   -- ["language_server_worse_reflection.inlay_hints.types"] = true,
+    --   ['language_server_worse_reflection.inlay_hints.params'] = true,
+    -- },
+  },
+  rust_analyzer = {
+    ['rust-analyzer'] = {
+      -- completion = {
+      --   postfix = {
+      --     enable = false,
+      --   },
+      -- },
+      check = {
+        command = 'clippy',
+      },
+      cargo = {
+        allFeatures = true,
+      },
+      -- inlayHints = {
+      --   closureReturnTypeHints = { enable = true },
+      -- },
+    },
+  },
+  svelte = {},
+  tailwindcss = {},
+  tsserver = {
+    -- javascript = {
+    --   inlayHints = {
+    --     includeInlayEnumMemberValueHints = true,
+    --     includeInlayFunctionLikeReturnTypeHints = true,
+    --     includeInlayFunctionParameterTypeHints = true,
+    --     includeInlayParameterNameHints = 'all',
+    --     includeInlayParameterNameHintsWhenArgumentMatchesName = true,
+    --     includeInlayPropertyDeclarationTypeHints = true,
+    --     includeInlayVariableTypeHints = true,
+    --   },
+    -- },
+    -- typescript = {
+    --   inlayHints = {
+    --     includeInlayEnumMemberValueHints = true,
+    --     includeInlayFunctionLikeReturnTypeHints = true,
+    --     includeInlayFunctionParameterTypeHints = true,
+    --     includeInlayParameterNameHints = 'all',
+    --     includeInlayParameterNameHintsWhenArgumentMatchesName = true,
+    --     includeInlayPropertyDeclarationTypeHints = true,
+    --     includeInlayVariableTypeHints = true,
+    --   },
+    -- },
+  },
+  yamlls = {},
 }
 
 -- Setup neovim lua configuration
@@ -619,28 +793,58 @@ mason_lspconfig.setup {
 
 mason_lspconfig.setup_handlers {
   function(server_name)
-    require('lspconfig')[server_name].setup {
-      capabilities = capabilities,
-      on_attach = on_attach,
-      settings = servers[server_name],
-      filetypes = (servers[server_name] or {}).filetypes,
-    }
+    if server_name ~= 'tsserver' then
+      require('lspconfig')[server_name].setup {
+        capabilities = capabilities,
+        on_attach = on_attach,
+        settings = servers[server_name],
+        filetypes = (servers[server_name] or {}).filetypes,
+        init_options = (servers[server_name] or {}).init_options,
+        handlers = {
+          ['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, { border = 'rounded' }),
+          ['textDocument/signatureHelp'] = vim.lsp.with(vim.lsp.handlers.signature_help, { border = 'rounded' }),
+        },
+      }
+      -- else
+      --   require('typescript-tools').setup {
+      --     capabilities = capabilities,
+      --     on_attach = on_attach,
+      --     settings = servers[server_name],
+      --     filetypes = (servers[server_name] or {}).filetypes,
+      --     init_options = (servers[server_name] or {}).init_options,
+      --     handlers = {
+      --       ['textDocument/hover'] = vim.lsp.with(vim.lsp.handlers.hover, { border = 'rounded' }),
+      --       ['textDocument/signatureHelp'] = vim.lsp.with(vim.lsp.handlers.signature_help, { border = 'rounded' }),
+      --     },
+      --   }
+    end
   end,
 }
 
 -- [[ Configure nvim-cmp ]]
 -- See `:help cmp`
+local has_words_before = function()
+  unpack = unpack or table.unpack
+  local line, col = unpack(vim.api.nvim_win_get_cursor(0))
+  return col ~= 0 and vim.api.nvim_buf_get_lines(0, line - 1, line, true)[1]:sub(col, col):match '%s' == nil
+end
+vim.api.nvim_set_hl(0, 'CmpGhostText', { link = 'Comment', default = true })
 local cmp = require 'cmp'
 local luasnip = require 'luasnip'
 require('luasnip.loaders.from_vscode').lazy_load()
 luasnip.config.setup {}
 
 cmp.setup {
+  window = {
+    completion = cmp.config.window.bordered(),
+    documentation = cmp.config.window.bordered(),
+  },
   snippet = {
     expand = function(args)
       luasnip.lsp_expand(args.body)
     end,
   },
+  preselect = require('cmp').PreselectMode.None,
   completion = {
     completeopt = 'menu,menuone,noinsert',
   },
@@ -650,15 +854,29 @@ cmp.setup {
     ['<C-b>'] = cmp.mapping.scroll_docs(-4),
     ['<C-f>'] = cmp.mapping.scroll_docs(4),
     ['<C-Space>'] = cmp.mapping.complete {},
-    ['<CR>'] = cmp.mapping.confirm {
-      behavior = cmp.ConfirmBehavior.Replace,
-      select = true,
+    -- ['<CR>'] = cmp.mapping.confirm {
+    --   behavior = cmp.ConfirmBehavior.Replace,
+    --   select = true,
+    -- },
+    ['<CR>'] = cmp.mapping {
+      i = cmp.mapping.confirm {
+        behavior = cmp.ConfirmBehavior.Replace,
+        select = true,
+      },
+      -- s = cmp.mapping.confirm { select = true },
+      -- s = cmp.mapping.confirm { behavior = cmp.ConfirmBehavior.Replace, select = true },
+      -- c = cmp.mapping.confirm { behavior = cmp.ConfirmBehavior.Replace, select = true },
     },
+
     ['<Tab>'] = cmp.mapping(function(fallback)
       if cmp.visible() then
         cmp.select_next_item()
+      -- You could replace the expand_or_jumpable() calls with expand_or_locally_jumpable()
+      -- that way you will only jump inside the snippet region
       elseif luasnip.expand_or_locally_jumpable() then
         luasnip.expand_or_jump()
+      elseif has_words_before() then
+        cmp.complete()
       else
         fallback()
       end
@@ -673,12 +891,92 @@ cmp.setup {
       end
     end, { 'i', 's' }),
   },
-  sources = {
+  sources = cmp.config.sources({
     { name = 'nvim_lsp' },
     { name = 'luasnip' },
     { name = 'path' },
+  }, {
+    { name = 'buffer' },
+  }),
+  -- formatting = {
+  --   format = require('lspkind').cmp_format {
+  --     mode = 'symbol_text',
+  --     menu = {
+  --       buffer = '[Buffer]',
+  --       nvim_lsp = '[LSP]',
+  --       luasnip = '[LuaSnip]',
+  --       nvim_lua = '[Lua]',
+  --       latex_symbols = '[Latex]',
+  --     },
+  --   },
+  -- },
+  formatting = {
+    format = function(entry, vim_item)
+      if vim.tbl_contains({ 'path' }, entry.source.name) then
+        local icon, hl_group = require('nvim-web-devicons').get_icon(entry:get_completion_item().label)
+        if icon then
+          vim_item.kind = icon
+          vim_item.kind_hl_group = hl_group
+          return vim_item
+        end
+      end
+      return require('lspkind').cmp_format { with_text = true }(entry, vim_item)
+    end,
+  },
+  experimental = {
+    ghost_text = {
+      hl_group = 'CmpGhostText',
+    },
   },
 }
+
+-- Set configuration for specific filetype.
+cmp.setup.filetype('gitcommit', {
+  sources = cmp.config.sources({
+    { name = 'git' }, -- You can specify the `git` source if [you were installed it](https://github.com/petertriho/cmp-git).
+  }, {
+    { name = 'buffer' },
+  }),
+})
+
+-- Use buffer source for `/` and `?` (if you enabled `native_menu`, this won't work anymore).
+cmp.setup.cmdline({ '/', '?' }, {
+  mapping = cmp.mapping.preset.cmdline(),
+  sources = {
+    { name = 'buffer' },
+  },
+})
+
+-- Use cmdline & path source for ':' (if you enabled `native_menu`, this won't work anymore).
+cmp.setup.cmdline(':', {
+  mapping = cmp.mapping.preset.cmdline(),
+  sources = cmp.config.sources({
+    { name = 'path' },
+  }, {
+    { name = 'cmdline' },
+  }),
+})
+
+-- vim.api.nvim_create_autocmd('LspAttach', {
+--   group = vim.api.nvim_create_augroup('UserLspConfig', {}),
+--   callback = function(args)
+--     local client = vim.lsp.get_client_by_id(args.data.client_id)
+--     if client.server_capabilities.inlayHintProvider then
+--       vim.lsp.inlay_hint.enable(args.buf, true)
+--     end
+--     -- whatever other lsp config you want
+--   end,
+-- })
+
+if vim.lsp.inlay_hint then
+  vim.keymap.set('n', '<leader>ih', function()
+    if vim.lsp.inlay_hint.is_enabled(0) then
+      vim.lsp.inlay_hint.enable(0, false)
+    else
+      vim.lsp.inlay_hint.enable(0, true)
+    end
+  end, { desc = 'Toggle inlay hints' })
+end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
